@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+GRID/
+data/
+models/
+outputs/
+*.mp4 *.avi *.mov *.mkv *.mpg
+*.npy *.h5 *.pt *.pth *.dat
