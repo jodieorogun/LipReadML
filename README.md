@@ -1,22 +1,38 @@
 # Lip Reading (GRID) — Student Project
 
-End-to-end lip-reading pipeline: face/mouth ROI, HOG/3D-CNN features, and classifier.
+End-to-end baseline: face/mouth ROI (OpenCV + dlib) → HOG / 3D-CNN features → classifier.
 
-## Quickstart
-python -m venv .venv
-# activate venv (Windows: .venv\Scripts\activate; macOS/Linux: source .venv/bin/activate)
+## Project Layout
+LipReadML/
+├── main.py
+├── .gitignore
+├── requirements.txt
+├── data/                # local only (ignored) e.g. landmarks.dat
+└── GRID/                # local only (ignored: s1/s2/s3 with videos/ and align/)
+
+## Quickstart (macOS, Homebrew Python on Apple Silicon)
+# 1) Create & activate a virtual environment
+/opt/homebrew/bin/python3 -m venv .venv
+source .venv/bin/activate
+
+# 2) Install dependencies
 pip install -r requirements.txt
-python main.py  # or your entry script
 
-## Data
-Uses the GRID corpus (not included). Place videos under data/… as described in scripts/README_data.md.
+# 3) Run
+python main.py
 
-## Results (current)
-Top-1 accuracy:  **X%** on **N** words (baseline).
-Notes: small training split; noisy mouth crops; room to improve.
+
+
+## Data (not included in repo)
+- GRID dataset in `GRID/` (with `s1/s2/s3/videos` and `align`) — **not committed**.
+- dlib landmarks model in `data/landmarks.dat` (or `shape_predictor_68_face_landmarks.dat`) — **not committed**.
+
+## Results (baseline)
+- Notes: small training split; ROI jitter; class imbalance.
 
 ## Roadmap
-- Better ROI (stabilized mouth crop)
-- Data balance/augmentation
-- Try 3D-CNN with optical flow
+- Stabilize mouth ROI
+- Balance/augment data
+- Try 3D-CNN (optionally with optical flow)
 - Tune classifier & eval (top-k, per-class)
+
