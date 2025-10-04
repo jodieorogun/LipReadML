@@ -1,4 +1,4 @@
-# Lip Reading (GRID) — Student Project
+# Lip Reading (GRID)
 
 End-to-end baseline: face/mouth ROI (OpenCV + dlib) → HOG / 3D-CNN features → classifier.
 
