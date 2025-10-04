@@ -9,13 +9,14 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from skimage.feature import hog
-
-#DLIB
-PREDICTOR_PATH = "data/shape_predictor_68_face_landmarks.dat"  # download & place here
+ 
+ # setting up dlibs face detector
+PREDICTOR_PATH = "data/shape_predictor_68_face_landmarks.dat" 
 DLIB_FACE = dlib.get_frontal_face_detector()
 DLIB_SHAPE = dlib.shape_predictor(PREDICTOR_PATH)
-MOUTH_IDX = list(range(48, 68))  # mouth landmarks in 68-pt model
+MOUTH_IDX = list(range(48, 68))  # mouth landmarks in model
 
+# cropping with boundary checks 
 def safe_crop(img, x1, y1, x2, y2):
     h, w = img.shape[:2]
     x1 = max(0, int(x1)); y1 = max(0, int(y1))
@@ -24,7 +25,8 @@ def safe_crop(img, x1, y1, x2, y2):
         return None
     return img[y1:y2, x1:x2]
 
-class MouthCropperDlib:
+
+class MouthCropperDlib: # dlib-based mouth cropper with smoothing
     def __init__(self, pad=1.5, smooth=0.6, det_width=320, detect_every=10):
         self.pad = pad
         self.smooth = smooth
@@ -33,7 +35,7 @@ class MouthCropperDlib:
         self.detect_every = detect_every
         self._frame_counter = 0
 
-    def _ema(self, new_box):
+    def _ema(self, new_box): # smoothing 
         if self.prev is None:
             self.prev = new_box
             return new_box
@@ -47,7 +49,7 @@ class MouthCropperDlib:
         self.prev = sm
         return sm
 
-    def _detect_face_rect(self, gray):
+    def _detect_face_rect(self, gray): # returns dlib.rectangle for detected face
         h, w = gray.shape[:2]
         scale = 1.0
         if w > self.det_width:
@@ -63,7 +65,7 @@ class MouthCropperDlib:
         return dlib.rectangle(int(r.left()*inv), int(r.top()*inv),
                               int(r.right()*inv), int(r.bottom()*inv))
 
-    def detect_bbox(self, frame_bgr):
+    def detect_bbox(self, frame_bgr): # returns (x1,y1,x2,y2) for coords around mouth
         self._frame_counter += 1
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
         need_detect = (self.prev is None) or (self._frame_counter % self.detect_every == 0)
@@ -82,15 +84,9 @@ class MouthCropperDlib:
         else:
             return self.prev
 
-mouth_cropper = MouthCropperDlib()
+mouth_cropper = MouthCropperDlib() 
 
-# ---------- LABEL PARSER ----------
-def parseAlignFile(pathToAlign, word_index=0):
-    """
-    Extracts spoken words from align file.
-    word_index=0 → first spoken word
-    word_index=1 → second spoken word (GRID colour)
-    """
+def parseAlignFile(pathToAlign, word_index=0):  # getting the target word from .align file
     words = []
     with open(pathToAlign, 'r') as file:
         for line in file:
@@ -102,13 +98,12 @@ def parseAlignFile(pathToAlign, word_index=0):
                 words.append(token)
     return words[word_index] if len(words) > word_index else None
 
-# ---------- FEATURE EXTRACTOR ----------
-def hog_feat(gray):
+def hog_feat(gray): #HOG feature extraction
     return hog(gray, orientations=9, pixels_per_cell=(8,8),
                cells_per_block=(2,2), block_norm="L2-Hys",
                transform_sqrt=True, feature_vector=True)
 
-def videoToFeature(path, max_frames=64, debug=False):
+def videoToFeature(path, max_frames=64, debug=False): # video to feature vector
     cap = cv2.VideoCapture(str(path))
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if not cap.isOpened() or total <= 0:
@@ -118,22 +113,22 @@ def videoToFeature(path, max_frames=64, debug=False):
     target_indices = np.linspace(0, total-1, num=min(total, max_frames*3)).astype(int)
     idx_set = set(target_indices.tolist())
 
-    framesHists = []
+    framesHists = [] # collecting HOG features
     i = -1
     while True:
-        grabbed, frame = cap.read()
+        grabbed, frame = cap.read() # read frame
         if not grabbed:
             break
         i += 1
         if i not in idx_set:
             continue
 
-        bbox = mouth_cropper.detect_bbox(frame)
+        bbox = mouth_cropper.detect_bbox(frame) # detect mouth
         mouth = None
         if bbox:
             x1, y1, x2, y2 = bbox
-            mouth = safe_crop(frame, x1, y1, x2, y2)
-        if mouth is None:
+            mouth = safe_crop(frame, x1, y1, x2, y2) # crop mouth
+        if mouth is None: # fallback to center crop
             h, w = frame.shape[:2]
             side = int(0.5 * min(h, w))
             cx, cy = w//2, int(h*0.7)
@@ -141,13 +136,13 @@ def videoToFeature(path, max_frames=64, debug=False):
             if mouth is None:
                 continue
 
-        gray = cv2.cvtColor(mouth, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(mouth, cv2.COLOR_BGR2GRAY) # to grayscale       
         gray = cv2.resize(gray, (128, 128), interpolation=cv2.INTER_AREA)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        gray = clahe.apply(gray)
+        gray = clahe.apply(gray) 
 
-        feat = hog_feat(gray)
-        framesHists.append(feat)
+        feat = hog_feat(gray) # extract HOG feature
+        framesHists.append(feat)   
 
         if debug:
             dbg = frame.copy()
@@ -167,12 +162,12 @@ def videoToFeature(path, max_frames=64, debug=False):
     if not framesHists:
         return None
 
-    F = np.stack(framesHists, axis=0)
-    feat_mean, feat_std = F.mean(axis=0), F.std(axis=0)
-    return np.concatenate([feat_mean, feat_std]).astype(np.float32)
+    F = np.stack(framesHists, axis=0) 
+    feat_mean, feat_std = F.mean(axis=0), F.std(axis=0)  
+    return np.concatenate([feat_mean, feat_std]).astype(np.float32) # final feature vector
 
-# ---------- DATASET BUILDER ----------
-def buildDataset(gridRoot, word_index=0):
+
+def buildDataset(gridRoot, word_index=0): # building dataset from GRID
     X, labels = [], []
     root = Path(gridRoot)
     speakers = sorted([p.name for p in root.glob("s*") if p.is_dir()])
@@ -199,33 +194,31 @@ def buildDataset(gridRoot, word_index=0):
             if not label:
                 continue
 
-            feat = videoToFeature(mpg, max_frames=96, debug=True)
+            feat = videoToFeature(mpg, max_frames=96, debug=True) 
             if feat is None:
                 continue
-
-            X.append(feat)
+            # adding features and labels 
+            X.append(feat) 
             labels.append(label)
 
     X = np.array(X, dtype=np.float32)
     labels = np.array(labels, dtype=object)
     return X, labels
 
-# ---------- TRAIN ----------
-def train(X, labels, k=3):
-    print("Class counts:", Counter(labels))
+def train(X, labels, k=3): # training
+    print("Class counts:", Counter(labels)) 
     le = LabelEncoder()
     y = le.fit_transform(labels)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.25, random_state=32, stratify=y
     )
-    knn = KNeighborsClassifier(n_neighbors=k, metric="euclidean")
+    knn = KNeighborsClassifier(n_neighbors=k, metric="euclidean") 
     knn.fit(X_train, y_train)
     y_pred = knn.predict(X_test)
     print("Accuracy:", accuracy_score(y_test, y_pred))
     print(classification_report(y_test, y_pred, target_names=le.classes_))
-    return knn, le
+    return knn, le # returning model and label encoder
 
-# ---------- MAIN ----------
 if __name__ == "__main__":
     GRID_ROOT = "GRID"
     X, labels = buildDataset(GRID_ROOT, word_index=0)  # change word_index here (0=first, 1=second)
